@@ -13,7 +13,14 @@
 #include <errno.h>
 #include <stdbool.h>
 
-static bool sequential = true;
+void free_commands(char **commands) {
+    int i = 0;
+    while (commands[i] != NULL) {
+        free(commands[i]); 
+        i++;
+    }
+    free(commands); 
+}
 
 int commentindex(const char *buffer){
 	int i =0;
@@ -78,25 +85,24 @@ void print_tokens(char *tokens[]) {
         i++;
     }
 }
-int runsequential(char *commands[]){
-//is this already parallel??
+int runsequential(char *commands[], bool *sequential, bool *exit){
 	int i =0;
 	while (commands[i] != NULL){
 		char **args= separate_commands(commands[i], " \n\t");
 		if (strcmp(args[0], "mode")==0){
-			if (strcmp(args[1], "p")==0){
-				printf("got here\n");
-				sequential = false;
-				return 0;
+		        if (args[1] == NULL) {			  
+			        printf("Current mode is: SEQUENTIAL\n"); 		       
 			}
-			else if (strcmp(args[1], "s")==0){
-				printf("got here\n");
+			else if (strcmp(args[1], "p")==0 ||  strcmp(args[1], "parallel")==0){
+				*sequential = false;
 			}
-			else {
-				fprintf(stderr, "execv failed: %s\n", strerror(errno));
+			else if (strcmp(args[1], "s")==0 || strcmp(args[1], "sequential")==0){
+			        *sequential= true;
 			}
-			//need a case to wrongly execv all other modes? e.g. mode x
-			//currently prints <execv failed: Success> so prob need to do something dif
+			
+		}
+		else if (strcmp(args[0], "exit")==0){
+			*exit = true;
 		}
 		else{
 			pid_t pid = fork();
@@ -110,20 +116,66 @@ int runsequential(char *commands[]){
 			   	wait(&status);
 			}
 		}
+		free_commands(args);
 		i++;
 	}
+	
+
 	return 0;
 	
 }
 
-void runparallel(char *commands[]){
+int runparallel(char *commands[], bool *sequential, bool *exit){
+        
+        int i =0;
+        int num_children=0;
+	while (commands[i] != NULL){
+		char **args= separate_commands(commands[i], " \n\t");
+		if (strcmp(args[0], "mode")==0){
+		        if (args[1] == NULL){
+			        printf("Current mode is: PARALLEL\n");
+			       
+			}
+			else if (strcmp(args[1], "p")==0 ||  strcmp(args[1], "parallel")==0){
+				*sequential = false;
+			}
+			else if (strcmp(args[1], "s")==0 || strcmp(args[1], "sequential")==0){
+			        *sequential= true;
+			}
+			
+		}
+		else if (strcmp(args[0], "exit")==0){
+			*exit = true;
+		}
+		else{
+		        num_children++;
+			pid_t pid = fork();
+			if (pid==0){
+				if (execv(args[0], args) < 0) {
+					fprintf(stderr, "execv failed: %s\n", strerror(errno));
+				}
+			}
+
+		}
+		free_commands(args);
+		i++;
+		
+	}
+	for(int i = 0; i< num_children; i++){
+	        int status = 0;
+	        wait(&status);
+	}
+	
+
+	return 0;
 	
 
 }
 
 
 int main(int argc, char **argv) {
-    sequential = true;
+    bool *sequential = true;
+    bool *exit = false;
     char buffer[1024];
     printf("prompt:: ");
     fflush(stdout);
@@ -133,16 +185,24 @@ int main(int argc, char **argv) {
 	int index = commentindex(buffer);
 	buffer[index] = '\0';
 	char **commands = separate_commands(buffer, ";");
+
 	if (sequential){
-		runsequential(commands);
+		runsequential(commands, &sequential, &exit);
 	}
 	else{
-		runparallel(commands);
+		runparallel(commands, &sequential, &exit);
 	}
+	free_commands(commands);
+	if (exit){
+	        break;
+	}
+	
 	printf("prompt:: ");
 	fflush(stdout);
+	
     }
-    printf("\nbye now\n");
+    
+    printf("bye now\n");
 
     return 0;
 }
