@@ -13,6 +13,12 @@
 #include <errno.h>
 #include <stdbool.h>
 
+
+struct Node {
+        char dir[1024];
+        struct Node *next;
+        } ;
+
 void free_commands(char **commands) {
     int i = 0;
     while (commands[i] != NULL) {
@@ -85,7 +91,25 @@ void print_tokens(char *tokens[]) {
         i++;
     }
 }
-int runsequential(char *commands[], bool *sequential, bool *exit){
+
+
+/*int print_jobs(
+
+bool pauseOrResume(char *args[]){
+        bool found = false;
+        if(strcmp(args[0], "pause") == 0){
+                kill(0, SIGSTOP);
+                found = true;
+        }
+        if(strcmp(args[0], "resume") == 0){
+                kill(0,SIGCONT);
+                found = true;
+        }
+        return found;
+}*/
+
+
+int runsequential(char *commands[], bool *sequential, bool *ex, struct Node *head){
 	int i =0;
 	while (commands[i] != NULL){
 		char **args= separate_commands(commands[i], " \n\t");
@@ -102,12 +126,23 @@ int runsequential(char *commands[], bool *sequential, bool *exit){
 			
 		}
 		else if (strcmp(args[0], "exit")==0){
-			*exit = true;
+			*ex = true;
 		}
+
 		else{
+		        struct stat statresult;
+                        int rv = stat(args[0], &statresult);
+                        char *newarg[1024];
+                        strncpy(newarg,args[0],1024);
+                        while (rv < 0) {
+                                strcpy(newarg,head->dir);
+                                strcat(newarg,args[0]);
+                                rv = stat(newarg, &statresult);
+                                head=head->next;
+                        }
 			pid_t pid = fork();
 			if (pid==0){
-				if (execv(args[0], args) < 0) {
+				if (execv(newarg, args) < 0) {
 					fprintf(stderr, "execv failed: %s\n", strerror(errno));
 				}
 			}
@@ -116,6 +151,7 @@ int runsequential(char *commands[], bool *sequential, bool *exit){
 			   	wait(&status);
 			}
 		}
+
 		free_commands(args);
 		i++;
 	}
@@ -125,7 +161,7 @@ int runsequential(char *commands[], bool *sequential, bool *exit){
 	
 }
 
-int runparallel(char *commands[], bool *sequential, bool *exit){
+int runparallel(char *commands[], bool *sequential, bool *ex, struct Node *head){
         
         int i =0;
         int num_children=0;
@@ -145,13 +181,23 @@ int runparallel(char *commands[], bool *sequential, bool *exit){
 			
 		}
 		else if (strcmp(args[0], "exit")==0){
-			*exit = true;
+			*ex = true;
 		}
 		else{
+		        struct stat statresult;
+                        int rv = stat(args[0], &statresult);
+                        char *newarg[1024];
+                        strncpy(newarg,args[0],1024);
+                        while (rv < 0) {
+                                strcpy(newarg,head->dir);
+                                strcat(newarg,args[0]);
+                                rv = stat(newarg, &statresult);
+                                head=head->next;
+                        }
 		        num_children++;
 			pid_t pid = fork();
 			if (pid==0){
-				if (execv(args[0], args) < 0) {
+				if (execv(newarg, args) < 0) {
 					fprintf(stderr, "execv failed: %s\n", strerror(errno));
 				}
 			}
@@ -172,29 +218,57 @@ int runparallel(char *commands[], bool *sequential, bool *exit){
 
 }
 
+void readfile(FILE *datafile,struct Node **head){
+        struct Node *newnode;
+        char line[1024];
+        while(fgets(line, 1024, datafile)!=NULL){
+                line[strlen(line)-1] = '/';
+                line[strlen(line)] = '\0';
+                newnode = (struct Node *) malloc(sizeof(struct Node));
+                strncpy(newnode->dir,line,1024);
+                newnode->next=*head;
+                *head=newnode; 
+       }
+
+}
+
+void free_dir(struct Node *dirlist) {
+
+	while (dirlist != NULL){
+		struct Node *tmp = dirlist;
+		dirlist = dirlist -> next;
+		free(tmp);
+	}
+ 
+}
+
 
 int main(int argc, char **argv) {
     bool *sequential = true;
-    bool *exit = false;
+    bool *ex = false;
     char buffer[1024];
     printf("prompt:: ");
     fflush(stdout);
+    struct Node *head = NULL;
+    FILE *datafile = fopen("shell-config", "r");
+    readfile(datafile,&head);
     while (fgets(buffer, 1024, stdin) != NULL) {
         int bufflen = strlen(buffer);
         buffer[bufflen-1] = '\0';
 	int index = commentindex(buffer);
 	buffer[index] = '\0';
 	char **commands = separate_commands(buffer, ";");
-
 	if (sequential){
-		runsequential(commands, &sequential, &exit);
+		runsequential(commands, &sequential, &ex, head);
 	}
 	else{
-		runparallel(commands, &sequential, &exit);
+		runparallel(commands, &sequential, &ex,head);
 	}
 	free_commands(commands);
-	if (exit){
-	        break;
+	if (ex){
+	        free_dir(head);
+	        printf("bye now\n");
+	        exit(1);
 	}
 	
 	printf("prompt:: ");
@@ -203,7 +277,7 @@ int main(int argc, char **argv) {
     }
     
     printf("bye now\n");
-
+    free_dir(head);
     return 0;
 }
 
