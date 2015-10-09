@@ -29,6 +29,52 @@ struct job{
 	struct job *next;
 	};
 
+struct job *list_delete(pid_t name, struct job *list) {
+	struct job *head=list;
+	if (head == NULL){
+		return head;
+	}
+	struct job *next_node=list->next;
+	if (list->pidID==name){
+		list= head->next;
+		free(head);
+		return list;
+	}
+	while(next_node!=NULL){
+		if (list->pidID==name){
+			list->next=next_node->next;
+			free(next_node);
+			return head;
+		}
+		list=list->next;
+		next_node=next_node->next;
+	}
+	return head;
+}
+
+struct job *list_append(pid_t id, char *command,  struct job *list) {
+	struct job *new_node=(struct job *)malloc(sizeof(struct job));
+	strncpy(new_node->command,command,1024);
+	strncpy(new_node->status,"running",10);
+	new_node->pidID = id;
+	new_node->next=NULL;
+	struct job *current = list;
+	if (list==NULL){
+		current=new_node;
+		return current;
+	}
+
+	while(list->next!=NULL){
+		list=list->next;
+	}
+	list->next=new_node;
+
+	return current;
+
+
+}
+
+
 void free_commands(char **commands) {
     int i = 0;
     while (commands[i] != NULL) {
@@ -179,7 +225,7 @@ int runsequential(char *commands[], bool *sequential, bool *ex, struct Node *hea
 	
 }
 
-int runparallel(char *commands[], bool *sequential, bool *ex, struct Node *head){
+int runparallel(char *commands[], bool *sequential, bool *ex, struct Node *head, struct job *jobs){
         
        int i =0;
         int num_children=0;
@@ -221,6 +267,7 @@ int runparallel(char *commands[], bool *sequential, bool *ex, struct Node *head)
                         else{
 		        num_children++;
 			pid_t pid = fork();
+			jobs = list_append(pid, commands[i], jobs);
 			if (pid==0){
 				if (execv(newarg, args) < 0) {
 					fprintf(stderr, "execv failed: %s\n", strerror(errno));
@@ -269,6 +316,17 @@ void free_dir(struct Node *dirlist) {
 }
 
 
+void free_jobs(struct job *joblist) {
+
+	while (joblist != NULL){
+		struct job *tmp = joblist;
+		joblist = joblist -> next;
+		free(tmp);
+	}
+ 
+}
+
+
 int main(int argc, char **argv) {
     bool sequential = true;
     bool ex = false;
@@ -276,7 +334,7 @@ int main(int argc, char **argv) {
     printf("prompt:: ");
     fflush(stdout);
     struct Node *head1 = NULL;
-    //struct job *head= NULL;
+    struct job *jobs= NULL;
     FILE *datafile = fopen("shell-config", "r");
     readfile(datafile,&head1);
     fclose(datafile);
@@ -318,7 +376,7 @@ int main(int argc, char **argv) {
 			int index = commentindex(buffer);
 			buffer[index] = '\0';
 			commands = separate_commands(buffer, ";");
-			runparallel(commands, &sequential, &ex, head1);
+			runparallel(commands, &sequential, &ex, head1,jobs);
 			free_commands(commands);
 			
 		    } else {
@@ -330,7 +388,8 @@ int main(int argc, char **argv) {
 		tostop = waitpid(-1, &status, WNOHANG);
 		if (tostop > 0){
 			//findjob();
-			printf("Process %d completed!\n",tostop); 
+			printf("Process %d completed!\n",tostop);
+			list_delete(tostop, jobs); 
 			//removejob(jobs, tostop);
 			
 		}
