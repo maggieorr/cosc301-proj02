@@ -208,12 +208,12 @@ int runparallel(char *commands[], bool *sequential, bool *ex, struct Node *head)
                         char newarg[1024];
                         strncpy(newarg,args[0],1024);
                         while (rv < 0 && cpy!=NULL) {
-                                strcpy(newarg,cpy->dir);
+                                strncpy(newarg,cpy->dir,1024);
                                 strcat(newarg,args[0]);
                                 rv = stat(newarg, &statresult);
                                 cpy=cpy->next;
                         }
-                        free(cpy);
+                      
                         if (rv<0){
                         	fprintf(stderr, "execv failed: %s\n", strerror(errno));
                         }
@@ -233,10 +233,11 @@ int runparallel(char *commands[], bool *sequential, bool *ex, struct Node *head)
 		i++;
 		
 	}
+	/*
 	for(int i = 0; i< num_children; i++){
 	        int status = 0;
 	        wait(&status);
-	}
+	}*/
 	
 
 	return 0;
@@ -252,7 +253,7 @@ void readfile(FILE *datafile,struct Node **head){
                 newnode = (struct Node *) malloc(sizeof(struct Node));
                 strncpy(newnode->dir,line,1024);
                 newnode->next=*head;
-                *head=newnode; 
+                *head=newnode;
        }
 
 }
@@ -275,17 +276,20 @@ int main(int argc, char **argv) {
     printf("prompt:: ");
     fflush(stdout);
     struct Node *head1 = NULL;
-    struct job *head= NULL;
+    //struct job *head= NULL;
     FILE *datafile = fopen("shell-config", "r");
     readfile(datafile,&head1);
+    fclose(datafile);
     while (fgets(buffer, 1024, stdin) != NULL) {
         int bufflen = strlen(buffer);
         buffer[bufflen-1] = '\0';
 	int index = commentindex(buffer);
 	buffer[index] = '\0';
-	char **commands = separate_commands(buffer, ";");
+	char**commands;
 	if (sequential){
+		commands = separate_commands(buffer, ";");
 		runsequential(commands, &sequential, &ex, head1);
+		free_commands(commands);
 	}
 	else{
 		while(1){
@@ -306,13 +310,16 @@ int main(int argc, char **argv) {
 			   
 		    } else if (rv > 0) {
 		    	char buffer[1024];
-			fgets(buffer, 1024, stdin);
+			if (fgets(buffer, 1024, stdin)==NULL){
+				ex=true;
+				}
 			int bufflen = strlen(buffer);
 			buffer[bufflen-1] = '\0';
 			int index = commentindex(buffer);
 			buffer[index] = '\0';
-			char **commands = separate_commands(buffer, ";");
-			runparallel(commands, &sequential, &ex,head1);
+			commands = separate_commands(buffer, ";");
+			runparallel(commands, &sequential, &ex, head1);
+			free_commands(commands);
 			
 		    } else {
 			printf("there was some kind of error: %s\n", strerror(errno));
@@ -327,9 +334,12 @@ int main(int argc, char **argv) {
 			//removejob(jobs, tostop);
 			
 		}
+		if (ex){
+			break;
+		}
 		}	
 	}
-	free_commands(commands);
+	
 	if (ex){
 	        free_dir(head1);
 	        printf("bye now\n");
