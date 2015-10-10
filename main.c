@@ -277,14 +277,22 @@ int runparallel(char *commands[], bool *sequential, bool *ex, struct Node *head,
                                 rv = stat(newarg, &statresult);
                                 cpy=cpy->next;
                         }
+                        char fullarg[1024]; 
+                        strncpy(fullarg,newarg,1024);
+                        int i=1;
+                        while(args[i]!='\0'){
+                       		strcat(fullarg,args[i]);
+                       		i++;
+                       	}
                         if (rv<0){
                         	fprintf(stderr, "execv failed: %s\n", strerror(errno));
-                        } 
+                        }
+                       
                         //if it is a valid path then fork it             
                         else{
 		        num_children++;
 			pid_t pid = fork();
-			*jobs = list_append(pid, commands[i], *jobs);
+			*jobs = list_append(pid, fullarg, *jobs);
 				if (pid==0){
 					if (execv(newarg, args) < 0) {
 						fprintf(stderr, "execv failed: %s\n", strerror(errno));
@@ -401,8 +409,10 @@ int runshell(struct Node *head1, struct job *jobs){
 		    if (sequential && jobs==NULL){
 			break;
 		    }
-		
-		}	
+		  
+		}
+		printf("prompt:: ");
+		fflush(stdout);	
 	}
 	
 	if (ex){
