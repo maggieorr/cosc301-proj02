@@ -150,20 +150,37 @@ void print_tokens(char *tokens[]) {
 }
 
 
-/*int print_jobs(
 
-bool pauseOrResume(char *args[]){
-        bool found = false;
+
+bool pauseOrResume(char *args[], struct job *jobs){
+	bool found = false;
+	if (args[1]==NULL){return true;}
+	int pid = atoi(args[1]);
+	int correctpid=0;
+	struct job *head=jobs;
+	while(head!=NULL){
+		if (head->pidID == pid){
+			correctpid = pid;
+			break;
+		}
+		head= head->next;
+	}
+	if (correctpid==0){
+			printf("Not a valid pid ID\n");
+			return false;
+		}
         if(strcmp(args[0], "pause") == 0){
                 kill(0, SIGSTOP);
+                strncpy(head->status,"paused",sizeof(char)*10);
                 found = true;
         }
         if(strcmp(args[0], "resume") == 0){
                 kill(0,SIGCONT);
+                strncpy(head->status,"running",sizeof(char)*10);
                 found = true;
         }
         return found;
-}*/
+}
 
 
 int runsequential(char *commands[], bool *sequential, bool *ex, struct Node *head){
@@ -186,6 +203,7 @@ int runsequential(char *commands[], bool *sequential, bool *ex, struct Node *hea
 		else if (strcmp(args[0], "exit")==0){
 			*ex = true;
 		}
+		
 
 		else{
 		        struct stat statresult;
@@ -259,7 +277,7 @@ int runparallel(char *commands[], bool *sequential, bool *ex, struct Node *head,
 		else if (strcmp(args[0], "exit")==0){
 			*ex = true;
 		}
-		else if (strcmp(args[0], "jobs")==0){
+		else if (strcmp(args[0], "jobs")==0 || pauseOrResume(args,*jobs)){
 			printjobs(*jobs);
 		}
 		else{
