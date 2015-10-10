@@ -34,6 +34,7 @@ struct job *list_delete(pid_t name, struct job *list) {
 	if (head == NULL){
 		return head;
 	}
+	printf("%s is done! ",list->command);
 	struct job *next_node=list->next;
 	if (list->pidID==name){
 		list= head->next;
@@ -225,10 +226,20 @@ int runsequential(char *commands[], bool *sequential, bool *ex, struct Node *hea
 	
 }
 
-int runparallel(char *commands[], bool *sequential, bool *ex, struct Node *head, struct job *jobs){
-        
-       int i =0;
-        int num_children=0;
+void printjobs(struct job *jobs){
+	printf("Current Jobs:\n");
+	if (jobs==NULL){printf("---no current jobs---\n");}
+	int i = 1;
+	while(jobs != NULL){
+		printf("Job %d: process id is %d, command is %s, and process state is %s\n", i, jobs->pidID, jobs->command, jobs->status);
+		jobs= jobs->next;
+		i++;
+	}
+}
+
+int runparallel(char *commands[], bool *sequential, bool *ex, struct Node *head, struct job **jobs){
+       	int i =0;
+       	int num_children=0;
 	while (commands[i] != NULL){
 		struct Node *cpy = head;
 		char **args= separate_commands(commands[i], " \n\t");
@@ -247,6 +258,9 @@ int runparallel(char *commands[], bool *sequential, bool *ex, struct Node *head,
 		}
 		else if (strcmp(args[0], "exit")==0){
 			*ex = true;
+		}
+		else if (strcmp(args[0], "jobs")==0){
+			printjobs(*jobs);
 		}
 		else{
 		       struct stat statresult;
@@ -267,7 +281,8 @@ int runparallel(char *commands[], bool *sequential, bool *ex, struct Node *head,
                         else{
 		        num_children++;
 			pid_t pid = fork();
-			jobs = list_append(pid, commands[i], jobs);
+			*jobs = list_append(pid, commands[i], *jobs);
+
 			if (pid==0){
 				if (execv(newarg, args) < 0) {
 					fprintf(stderr, "execv failed: %s\n", strerror(errno));
@@ -280,6 +295,7 @@ int runparallel(char *commands[], bool *sequential, bool *ex, struct Node *head,
 		i++;
 		
 	}
+	//this code was commented out for the purposes of background processing
 	/*
 	for(int i = 0; i< num_children; i++){
 	        int status = 0;
@@ -376,7 +392,7 @@ int main(int argc, char **argv) {
 			int index = commentindex(buffer);
 			buffer[index] = '\0';
 			commands = separate_commands(buffer, ";");
-			runparallel(commands, &sequential, &ex, head1,jobs);
+			runparallel(commands, &sequential, &ex, head1,&jobs);
 			free_commands(commands);
 			
 		    } else {
@@ -386,16 +402,17 @@ int main(int argc, char **argv) {
 	   	int status;
 		pid_t tostop;
 		tostop = waitpid(-1, &status, WNOHANG);
+		
 		if (tostop > 0){
-			//findjob();
-			printf("Process %d completed!\n",tostop);
-			list_delete(tostop, jobs); 
-			//removejob(jobs, tostop);
-			
+			jobs = list_delete(tostop, jobs);
+			printf("Process %d completed!\n",tostop);	
 		}
-		if (ex){
-			break;
-		}
+		
+		if (ex && jobs==NULL){
+				break;
+			}
+		
+		
 		}	
 	}
 	
