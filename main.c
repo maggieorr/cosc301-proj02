@@ -16,12 +16,13 @@
 
 //Maggie Orr and Katey Loughran - we worked on the whole thing together
 
+//create struct for linked list of directories
 struct Node {
         char dir[1024];
         struct Node *next;
         } ;
         
-        
+//create struct for linked list of jobs        
 struct job{
 	pid_t pidID;
 	char command[1024];
@@ -29,6 +30,7 @@ struct job{
 	struct job *next;
 	};
 
+//delete a job specified by it's pid number
 struct job *list_delete(pid_t name, struct job *list) {
 	struct job *head=list;
 	if (head == NULL){
@@ -53,7 +55,8 @@ struct job *list_delete(pid_t name, struct job *list) {
 	return head;
 }
 
-struct job *list_append(pid_t id, char *command,  struct job *list) {
+//increase the size of the linked list of jobs by 1 (whenever a new one is typed)
+struct job *list_append(pid_t id, char *command, struct job *list) {
 	struct job *new_node=(struct job *)malloc(sizeof(struct job));
 	strncpy(new_node->command,command,1024);
 	strncpy(new_node->status,"running",10);
@@ -85,6 +88,7 @@ void free_commands(char **commands) {
     free(commands); 
 }
 
+//ignore comments
 int commentindex(const char *buffer){
 	int i =0;
 	while (buffer[i] != '\0'){
@@ -96,17 +100,19 @@ int commentindex(const char *buffer){
 	return strlen(buffer);
 }
 
+//remove all white space from a string
 void removewhitespace(char s[]) {
 	int j=0;
     	for(int i =0; i<strlen(s); i++){
 		if(!isspace(s[i])){
 			s[j]=s[i];
 			j+=1;
-}
-}
+		}
+	}
 	s[j]='\0';
 }
 
+//separate a string by a specified separator
 char **separate_commands(const char *buffer, const char *separateby){
 	char *copy = strdup(buffer);
 	char *token;
@@ -133,28 +139,18 @@ char **separate_commands(const char *buffer, const char *separateby){
 			j[k]=strdup(token);
 			k++;
 		}
-		free(tokencpy);
-			
+		free(tokencpy);		
 	}
 	j[k]=NULL;
 	free(copy);
 	return j;
 
 }
-void print_tokens(char *tokens[]) {
-    int i = 0;
-    while (tokens[i] != NULL) {
-        printf("Token %d: %s\n", i+1, tokens[i]);
-        i++;
-    }
-}
 
-
-
-
+//check if the user wants to pause or resume one of the PIDs. If yes, return true and update. 
+//If no return false
 bool pauseOrResume(char *args[], struct job *jobs){
-	bool found = false;
-	if (args[1]==NULL){return true;}
+	if (args[1]==NULL){return false;}
 	int pid = atoi(args[1]);
 	int correctpid=0;
 	struct job *head=jobs;
@@ -166,20 +162,45 @@ bool pauseOrResume(char *args[], struct job *jobs){
 		head= head->next;
 	}
 	if (correctpid==0){
-			printf("Not a valid pid ID\n");
 			return false;
 		}
         if(strcmp(args[0], "pause") == 0){
-                kill(0, SIGSTOP);
+                kill(correctpid, SIGSTOP);
                 strncpy(head->status,"paused",sizeof(char)*10);
-                found = true;
+                return true;
         }
         if(strcmp(args[0], "resume") == 0){
-                kill(0,SIGCONT);
+                kill(correctpid,SIGCONT);
                 strncpy(head->status,"running",sizeof(char)*10);
-                found = true;
+                return true;
         }
-        return found;
+        return false;
+}
+
+//check if user typed any built-in commands i.e. mode or exit
+//if yes, return true -- also do the designated function of each command
+//if no, return false
+bool checkcases(char **args, bool *sequential, bool *ex, const char mode[]){
+	if (strcmp(args[0], "mode")==0){
+		        if (args[1] == NULL){
+			        printf("Current mode is: %s\n", mode);
+			        return true;
+			}
+			else if (strcmp(args[1], "p")==0 ||  strcmp(args[1], "parallel")==0){
+				*sequential = false;
+				return true;
+			}
+			else if (strcmp(args[1], "s")==0 || strcmp(args[1], "sequential")==0){
+			        *sequential= true;
+			        return true;
+			}
+			
+		}
+	else if (strcmp(args[0], "exit")==0){
+			*ex = true;
+			return true;
+	}
+	return false;
 }
 
 
@@ -188,24 +209,7 @@ int runsequential(char *commands[], bool *sequential, bool *ex, struct Node *hea
 	while (commands[i] != NULL){
 		struct Node *cpy= head;
 		char **args= separate_commands(commands[i], " \n\t");
-		if (strcmp(args[0], "mode")==0){
-		        if (args[1] == NULL) {			  
-			        printf("Current mode is: SEQUENTIAL\n"); 		       
-			}
-			else if (strcmp(args[1], "p")==0 ||  strcmp(args[1], "parallel")==0){
-				*sequential = false;
-			}
-			else if (strcmp(args[1], "s")==0 || strcmp(args[1], "sequential")==0){
-			        *sequential= true;
-			}
-			
-		}
-		else if (strcmp(args[0], "exit")==0){
-			*ex = true;
-		}
-		
-
-		else{
+		if(!checkcases(args, sequential, ex, "SEQUENTIAL")){
 		        struct stat statresult;
                         int rv = stat(args[0], &statresult);
                         char newarg[1024];
@@ -223,27 +227,24 @@ int runsequential(char *commands[], bool *sequential, bool *ex, struct Node *hea
                         
                         else{
 			pid_t pid = fork();
-			if (pid==0){
-				if (execv(newarg, args) < 0) {
-					fprintf(stderr, "execv failed: %s\n", strerror(errno));
+				if (pid==0){
+					if (execv(newarg, args) < 0) {
+						fprintf(stderr, "execv failed: %s\n", strerror(errno));
+					}
+				}
+				if (pid >0){
+					int status=0;
+				   	wait(&status);
 				}
 			}
-			if (pid >0){
-				int status=0;
-			   	wait(&status);
-			}
-			}
 		}
-
 		free_commands(args);
 		i++;
 	}
-	
-
-	return 0;
-	
+	return 0;	
 }
 
+//print a lit of the current jobs including pid ID, command, and status i.e. running or pausing
 void printjobs(struct job *jobs){
 	printf("Current Jobs:\n");
 	if (jobs==NULL){printf("---no current jobs---\n");}
@@ -261,70 +262,49 @@ int runparallel(char *commands[], bool *sequential, bool *ex, struct Node *head,
 	while (commands[i] != NULL){
 		struct Node *cpy = head;
 		char **args= separate_commands(commands[i], " \n\t");
-		if (strcmp(args[0], "mode")==0){
-		        if (args[1] == NULL){
-			        printf("Current mode is: PARALLEL\n");
-			       
-			}
-			else if (strcmp(args[1], "p")==0 ||  strcmp(args[1], "parallel")==0){
-				*sequential = false;
-			}
-			else if (strcmp(args[1], "s")==0 || strcmp(args[1], "sequential")==0){
-			        *sequential= true;
-			}
-			
-		}
-		else if (strcmp(args[0], "exit")==0){
-			*ex = true;
-		}
-		else if (strcmp(args[0], "jobs")==0 || pauseOrResume(args,*jobs)){
+		if (strcmp(args[0], "jobs")==0 || pauseOrResume(args,*jobs)){
 			printjobs(*jobs);
 		}
-		else{
+		else if (!checkcases(args, sequential, ex, "PARALLEL")){
+			//make sure stdin is a valid path
 		       struct stat statresult;
                         int rv = stat(args[0], &statresult);
                         char newarg[1024];
                         strncpy(newarg,args[0],1024);
-                        while (rv < 0 && cpy!=NULL) {
+                        while (rv < 0 && cpy!=NULL) {           //check with directories
                                 strncpy(newarg,cpy->dir,1024);
                                 strcat(newarg,args[0]);
                                 rv = stat(newarg, &statresult);
                                 cpy=cpy->next;
                         }
-                      
                         if (rv<0){
                         	fprintf(stderr, "execv failed: %s\n", strerror(errno));
-                        }
-                        
+                        } 
+                        //if it is a valid path then fork it             
                         else{
 		        num_children++;
 			pid_t pid = fork();
 			*jobs = list_append(pid, commands[i], *jobs);
-
-			if (pid==0){
-				if (execv(newarg, args) < 0) {
-					fprintf(stderr, "execv failed: %s\n", strerror(errno));
+				if (pid==0){
+					if (execv(newarg, args) < 0) {
+						fprintf(stderr, "execv failed: %s\n", strerror(errno));
+					}
 				}
 			}
-			}
-
 		}
 		free_commands(args);
-		i++;
-		
+		i++;	
 	}
 	//this code was commented out for the purposes of background processing
 	/*
 	for(int i = 0; i< num_children; i++){
 	        int status = 0;
 	        wait(&status);
-	}*/
-	
-
+	}*/	
 	return 0;
-
 }
 
+//read the file and add contents to a linked list of directories
 void readfile(FILE *datafile,struct Node **head){
         struct Node *newnode;
         char line[1024];
@@ -338,40 +318,29 @@ void readfile(FILE *datafile,struct Node **head){
        }
 
 }
-
+//free linked list of directories
 void free_dir(struct Node *dirlist) {
-
 	while (dirlist != NULL){
 		struct Node *tmp = dirlist;
 		dirlist = dirlist -> next;
 		free(tmp);
 	}
- 
 }
-
-
+//free linked list of jobs
 void free_jobs(struct job *joblist) {
-
 	while (joblist != NULL){
 		struct job *tmp = joblist;
 		joblist = joblist -> next;
 		free(tmp);
 	}
- 
 }
-
-
-int main(int argc, char **argv) {
+//run the shell 
+int runshell(struct Node *head1, struct job *jobs){
     bool sequential = true;
     bool ex = false;
     char buffer[1024];
     printf("prompt:: ");
     fflush(stdout);
-    struct Node *head1 = NULL;
-    struct job *jobs= NULL;
-    FILE *datafile = fopen("shell-config", "r");
-    readfile(datafile,&head1);
-    fclose(datafile);
     while (fgets(buffer, 1024, stdin) != NULL) {
         int bufflen = strlen(buffer);
         buffer[bufflen-1] = '\0';
@@ -383,7 +352,10 @@ int main(int argc, char **argv) {
 		runsequential(commands, &sequential, &ex, head1);
 		free_commands(commands);
 	}
-	else{
+	printf("prompt:: ");
+	fflush(stdout);
+	if(!sequential){
+		//this infinite loop allows for the process to continue in the background
 		while(1){
 				  // declare an array of a single struct pollfd
 		    struct pollfd pfd[1];
@@ -401,7 +373,6 @@ int main(int argc, char **argv) {
 		    if (rv == 0) {
 			   
 		    } else if (rv > 0) {
-		    	char buffer[1024];
 			if (fgets(buffer, 1024, stdin)==NULL){
 				ex=true;
 				}
@@ -412,41 +383,45 @@ int main(int argc, char **argv) {
 			commands = separate_commands(buffer, ";");
 			runparallel(commands, &sequential, &ex, head1,&jobs);
 			free_commands(commands);
-			
 		    } else {
 			printf("there was some kind of error: %s\n", strerror(errno));
 		    }
 	
-	   	int status;
-		pid_t tostop;
-		tostop = waitpid(-1, &status, WNOHANG);
-		
-		if (tostop > 0){
+	   	    int status;
+		    pid_t tostop;
+		    //check if any of the children are done
+		    while((tostop=waitpid(-1, &status, WNOHANG))>0){
 			jobs = list_delete(tostop, jobs);
 			printf("Process %d completed!\n",tostop);	
-		}
-		
-		if (ex && jobs==NULL){
-				break;
-			}
-		
+		    }
+			//make sure you're not exiting or switching modes
+		    if (ex && jobs==NULL){
+			break;
+		    }
+		    if (sequential && jobs==NULL){
+			break;
+		    }
 		
 		}	
 	}
 	
 	if (ex){
 	        free_dir(head1);
-	        printf("bye now\n");
+	        printf("\n--bye now!!--\n");   //exits in the case of user typing "exit"
 	        exit(1);
 	}
-	
-	printf("prompt:: ");
-	fflush(stdout);
-	
     }
-    
-    printf("bye now!!\n");
-    free_dir(head1);
+    printf("\n--bye now!!--\n");   //exits in the case of the user typing "ctrl+d"
     return 0;
 }
 
+int main(int argc, char **argv) {
+    struct Node *head1 = NULL;
+    struct job *jobs= NULL;
+    FILE *datafile = fopen("shell-config", "r");
+    readfile(datafile,&head1);
+    fclose(datafile);
+    runshell(head1, jobs);
+    free_dir(head1);
+    return 0;
+}
